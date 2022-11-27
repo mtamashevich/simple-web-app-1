@@ -55,7 +55,7 @@ The solution should be pushed to a git repository and a link to the repository s
 
 ## Solution
 
-1 Docker container described in [Docker](./devops/build/Docker) file. Image builds inside job runer using docker. As an option you can describe cloudbuild.yaml file and use CloudBuid for building image and pushing it to GCR.
+1 Docker container described in [Docker](./devops/build/Dockerfile) file. Image builds inside job runer using docker. As an option you can describe cloudbuild.yaml file and use CloudBuid for building image and pushing it to GCR.
 
 2 For deployment, a simple [terraform code](./devops/terraform/) is used . As na option you can add Helm cart and deploy it using helm provider and some checks for rollback if needed
 
