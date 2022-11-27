@@ -52,3 +52,15 @@ The assignment delivery will be evaluated based on the applicant's abilities to
 ## Delivering your solution
 
 The solution should be pushed to a git repository and a link to the repository should be shared.
+
+## Solution
+
+1 Docker container described in [Docker](./devops/build/Dockerfile) file. Image builds inside job runer using docker. As an option you can describe cloudbuild.yaml file and use CloudBuid for building image and pushing it to GCR.
+
+2 For deployment, a simple [terraform code](./devops/terraform/) is used . As na option you can add Helm cart and deploy it using helm provider and some checks for rollback if needed
+
+3 Integration tests extract external ip from terraform output, and perform simple curl request for checking response [Int test script](./devops/int-test/int-test.sh).
+
+4 For logging you can use cloud native solution, or as example I've deployed Grafana-Loki to the GKE cluster.
+
+P.S. The code is an MVP and there are many places to improve it.
