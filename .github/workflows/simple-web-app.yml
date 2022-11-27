@@ -1,0 +1,151 @@
+name: Gitlab pipeline for simple-web-app
+run-name: ${{ github.actor }} is running pipeline for branch ${{ github.ref_name }}
+on:
+  push:
+    branches:
+      - master
+      - test/ci-cd
+  pull_request: {}
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: simple-web-app-cluster
+  GKE_ZONE: us-central1-c
+  # DEPLOYMENT_NAME: gke-test # TODO: update to deployment name
+  REPOSITORY: images
+  IMAGE: simple-web-app
+  TF_FOLDER: devops/terraform
+  TF_BACKEND_BUCKET: simple-web-app-tf-backend
+
+jobs:
+  Cheks-and-linters:
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      # Terraform check
+      - name: Chek terraform fmt
+        run: |-
+          terraform -chdir=${{ env.TF_FOLDER }} fmt -check -recursive
+
+      # Shell scripts check
+      - name: Shell scripts check
+        run: |-
+          find ./ -type f -name "*.sh" | while read line; do shellcheck -x $line; done
+
+      # Add your checks and linters here
+      # End of checks and linters
+
+  Build:
+    needs: Cheks-and-linters
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+
+      - name: Docker configuration
+        run: |-
+          cat '${{ steps.auth.outputs.credentials_file_path }}' | docker login -u _json_key --password-stdin https://gcr.io
+      
+      # Build the Docker image
+      - name: Build
+        run: |-
+          docker build \
+            --tag "gcr.io/$PROJECT_ID/$REPOSITORY/$IMAGE:$GITHUB_SHA" \
+            -f devops/build/Dockerfile \
+            .
+      # Push the Docker image to Google Artifact Registry
+      - name: Publish
+        run: |-
+          docker push "gcr.io/$PROJECT_ID/$REPOSITORY/$IMAGE:$GITHUB_SHA"
+
+  Deploy:
+    needs: Build
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+
+      # Get the GKE credentials so we can deploy to the cluster
+      - name: Set up GKE credentials
+        uses: google-github-actions/get-gke-credentials@v0
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Generate backend config for Terraform
+        run: |
+          cat <<EOF >> ${{ env.TF_FOLDER }}/backend.tf
+            terraform {
+              backend "gcs" {
+                prefix = "terraform/state"
+                bucket = "${{ env.TF_BACKEND_BUCKET }}"
+              }
+            }
+          EOF
+
+      - name: Terraform init
+        run: |-
+          terraform -chdir=${{ env.TF_FOLDER }} init
+
+      - name: Terraform apply
+        run: |-
+          terraform -chdir=${{ env.TF_FOLDER }} apply \
+            -auto-approve \
+            -var project_id=${{ env.PROJECT_ID }} \
+            -var simple_web_app_image=gcr.io/$PROJECT_ID/$REPOSITORY/$IMAGE:$GITHUB_SHA
+
+  Integration-tests:
+    needs: Deploy
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GOOGLE_CREDENTIALS }}'
+
+      # Get the GKE credentials so we can deploy to the cluster
+      - name: Set up GKE credentials
+        uses: google-github-actions/get-gke-credentials@v0
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Generate backend config for Terraform
+        run: |
+          cat <<EOF >> ${{ env.TF_FOLDER }}/backend.tf
+            terraform {
+              backend "gcs" {
+                prefix = "terraform/state"
+                bucket = "${{ env.TF_BACKEND_BUCKET }}"
+              }
+            }
+          EOF
+
+      - name: Terraform init
+        run: |-
+          terraform -chdir=${{ env.TF_FOLDER }} init
+
+      - run: |-
+          terraform -chdir=${{ env.TF_FOLDER }} output > terraform_output.txt
+
+      - run: |-
+          devops/int-test/int-test.sh
+

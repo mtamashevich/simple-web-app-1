@@ -360,3 +360,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Ignore generated credentials from google-github-actions/auth
+gha-creds-*.json
+
+# Terraform
+.terraform*
