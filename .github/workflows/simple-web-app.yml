@@ -5,7 +5,7 @@ on:
     branches:
       - master
       - test/ci-cd
-  pull_request: {}
+  # pull_request: {}
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
